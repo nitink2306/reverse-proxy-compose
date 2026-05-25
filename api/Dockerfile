@@ -22,6 +22,6 @@ COPY --chown=node:node --from=builder /app/node_modules ./node_modules
 COPY --chown=node:node index.js .
 
 HEALTHCHECK --interval=30s --timeout=5s --start-period=5s --retries=3 \
-  CMD wget -qO- http://localhost:8080/health || exit 1
+  CMD wget -qO- http://localhost:3000/health || exit 1
 
 CMD ["node","index.js"]
