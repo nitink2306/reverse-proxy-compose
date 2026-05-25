@@ -1,8 +1,47 @@
 const express = require("express");
 const { Pool } = require("pg");
+const {
+  registry,
+  httpRequestsTotal,
+  httpRequestDuration,
+  activeConnections,
+  memoryUsage,
+} = require("./metrics");
 
 const app = express();
 app.use(express.json());
+
+app.use((req, res, next) => {
+  const start = process.hrtime.bigint();
+  activeConnections.inc({}, 1);
+  let finished = false;
+  const finalize = (recordMetrics) => {
+    if (finished) return;
+    finished = true;
+    activeConnections.dec({}, 1);
+    if (!recordMetrics) return;
+    const duration = Number(process.hrtime.bigint() - start) / 1e9;
+    const routePath = req.route?.path
+      ? `${req.baseUrl || ""}${req.route.path}`
+      : req.baseUrl || "unknown";
+    httpRequestsTotal.inc({
+      method: req.method,
+      path: routePath,
+      status: res.statusCode.toString(),
+    });
+    httpRequestDuration.observe({}, duration);
+  };
+  res.on("finish", () => finalize(true));
+  res.on("close", () => finalize(false));
+  next();
+});
+
+setInterval(() => {
+  const mem = process.memoryUsage();
+  memoryUsage.set({ type: "rss" }, mem.rss);
+  memoryUsage.set({ type: "heapUsed" }, mem.heapUsed);
+  memoryUsage.set({ type: "heapTotal" }, mem.heapTotal);
+}, 10000);
 
 const pool = new Pool({
   host: process.env.DB_HOST,
@@ -43,6 +82,11 @@ app.post("/messages", async (req, res) => {
     [text],
   );
   res.status(201).json(result.rows[0]);
+});
+
+app.get("/metrics", (req, res) => {
+  res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+  res.send(registry.expose());
 });
 
 app.listen(3000, () => console.log("API running on port 3000"));

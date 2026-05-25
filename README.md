@@ -52,6 +52,11 @@ All inter-service traffic runs on an isolated bridge network. The API is never d
 - Accessible at [http://localhost:5050](http://localhost:5050)
 - Credentials configured via environment variables
 
+### Grafana
+- Visualization UI for Prometheus metrics
+- Accessible at [http://localhost:3001](http://localhost:3001)
+- Credentials configured via environment variables
+
 ### CI/CD (`.github/workflows/docker-build-push.yml`)
 - Triggers on every push to `main`
 - Logs into Docker Hub using repository secrets
@@ -85,6 +90,8 @@ POSTGRES_USER=
 POSTGRES_PASSWORD=
 PGADMIN_EMAIL=
 PGADMIN_PASSWORD=
+GF_SECURITY_ADMIN_USER=
+GF_SECURITY_ADMIN_PASSWORD=
 ```
 
 ## Run
