@@ -28,6 +28,7 @@ A fully containerized, production-style web application stack: Node.js/Express A
 ```
 
 All inter-service traffic runs on an isolated bridge network. The API is never directly exposed to the host.
+Prometheus scrapes API metrics over the internal network, and Grafana reads from Prometheus.
 
 ## What's inside
 
@@ -52,6 +53,12 @@ All inter-service traffic runs on an isolated bridge network. The API is never d
 - Accessible at [http://localhost:5050](http://localhost:5050)
 - Credentials configured via environment variables
 
+### Prometheus (`prometheus/`)
+- Scrapes API metrics from `/metrics` every 15s (internal only)
+- Uses `prometheus/prometheus.yml` for configuration
+- Stores time-series data in the `prometheus-data` volume
+- Accessible at [http://localhost:9090](http://localhost:9090)
+
 ### Grafana
 - Visualization UI for Prometheus metrics
 - Accessible at [http://localhost:3001](http://localhost:3001)
@@ -71,6 +78,8 @@ All inter-service traffic runs on an isolated bridge network. The API is never d
 | API        | —         | 3000          | Not exposed to host            |
 | PostgreSQL | —         | 5432          | Not exposed to host            |
 | pgAdmin    | 5050      | 80            | Database admin UI              |
+| Prometheus | 9090      | 9090          | Metrics scraping/storage       |
+| Grafana    | 3001      | 3000          | Metrics dashboards             |
 
 ## Prerequisites
 
@@ -121,6 +130,9 @@ docker compose down
 | GET    | /health    | Service health check |
 | GET    | /messages  | List all messages (newest first) |
 | POST   | /messages  | Create a message    |
+| GET    | /metrics   | Prometheus metrics (internal only) |
+
+The `/metrics` endpoint is blocked at the nginx layer, so it is reachable only from inside the Docker network (Prometheus).
 
 ### Examples
 
@@ -171,7 +183,7 @@ Set these under **Settings → Secrets and variables → Actions** in your GitHu
 
 ## Data persistence
 
-PostgreSQL data lives in the `postgres-data` named volume. It survives `docker compose down` and is only removed with:
+PostgreSQL data lives in the `postgres-data` named volume. Prometheus and Grafana store data in the `prometheus-data` and `grafana-data` volumes. These volumes survive `docker compose down` and are only removed with:
 
 ```bash
 docker compose down -v
