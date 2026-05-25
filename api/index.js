@@ -14,16 +14,25 @@ app.use(express.json());
 app.use((req, res, next) => {
   const start = process.hrtime.bigint();
   activeConnections.inc({}, 1);
-  res.on("finish", () => {
+  let finished = false;
+  const finalize = (recordMetrics) => {
+    if (finished) return;
+    finished = true;
+    activeConnections.dec({}, 1);
+    if (!recordMetrics) return;
     const duration = Number(process.hrtime.bigint() - start) / 1e9;
+    const routePath = req.route?.path
+      ? `${req.baseUrl || ""}${req.route.path}`
+      : req.baseUrl || "unknown";
     httpRequestsTotal.inc({
       method: req.method,
-      path: req.path,
+      path: routePath,
       status: res.statusCode.toString(),
     });
     httpRequestDuration.observe({}, duration);
-    activeConnections.dec({}, 1);
-  });
+  };
+  res.on("finish", () => finalize(true));
+  res.on("close", () => finalize(false));
   next();
 });
 
@@ -76,7 +85,7 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/metrics", (req, res) => {
-  res.set("Content-Type", "text/plain");
+  res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
   res.send(registry.expose());
 });
 

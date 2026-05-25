@@ -1,3 +1,39 @@
+const escapeLabelValue = (value) =>
+  String(value)
+    .replace(/\\/g, "\\\\")
+    .replace(/\n/g, "\\n")
+    .replace(/\r/g, "\\r")
+    .replace(/"/g, '\\"');
+
+const escapeHelp = (value) =>
+  String(value).replace(/\\/g, "\\\\").replace(/\n/g, "\\n").replace(/\r/g, "\\r");
+
+const normalizeLabels = (labels = {}, labelNames = []) => {
+  if (!labels || typeof labels !== "object") {
+    throw new Error("Labels must be an object.");
+  }
+  if (labelNames.length === 0) {
+    const ordered = {};
+    for (const key of Object.keys(labels).sort()) {
+      ordered[key] = labels[key];
+    }
+    return ordered;
+  }
+  const missing = labelNames.filter((name) => !(name in labels));
+  const extra = Object.keys(labels).filter((name) => !labelNames.includes(name));
+  if (missing.length || extra.length) {
+    const parts = [];
+    if (missing.length) parts.push(`missing: ${missing.join(", ")}`);
+    if (extra.length) parts.push(`extra: ${extra.join(", ")}`);
+    throw new Error(`Invalid label set (${parts.join("; ")}).`);
+  }
+  const ordered = {};
+  for (const name of labelNames) {
+    ordered[name] = labels[name];
+  }
+  return ordered;
+};
+
 class Counter {
   constructor(name, help, labelNames = []) {
     this.name = name;
@@ -7,17 +43,18 @@ class Counter {
   }
 
   inc(labels = {}, value = 1) {
-    const key = JSON.stringify(labels);
+    const normalizedLabels = normalizeLabels(labels, this.labelNames);
+    const key = JSON.stringify(normalizedLabels);
     this.values.set(key, (this.values.get(key) || 0) + value);
   }
 
   expose() {
-    let output = `# HELP ${this.name} ${this.help}\n`;
+    let output = `# HELP ${this.name} ${escapeHelp(this.help)}\n`;
     output += `# TYPE ${this.name} counter\n`;
     for (const [key, value] of this.values) {
       const labels = JSON.parse(key);
       const labelStr = Object.entries(labels)
-        .map(([k, v]) => `${k}="${v}"`)
+        .map(([k, v]) => `${k}="${escapeLabelValue(v)}"`)
         .join(",");
       output += labelStr
         ? `${this.name}{${labelStr}} ${value}\n`
@@ -36,27 +73,30 @@ class Gauge {
   }
 
   set(labels = {}, value) {
-    const key = JSON.stringify(labels);
+    const normalizedLabels = normalizeLabels(labels, this.labelNames);
+    const key = JSON.stringify(normalizedLabels);
     this.values.set(key, value);
   }
 
   inc(labels = {}, value = 1) {
-    const key = JSON.stringify(labels);
+    const normalizedLabels = normalizeLabels(labels, this.labelNames);
+    const key = JSON.stringify(normalizedLabels);
     this.values.set(key, (this.values.get(key) || 0) + value);
   }
 
   dec(labels = {}, value = 1) {
-    const key = JSON.stringify(labels);
+    const normalizedLabels = normalizeLabels(labels, this.labelNames);
+    const key = JSON.stringify(normalizedLabels);
     this.values.set(key, (this.values.get(key) || 0) - value);
   }
 
   expose() {
-    let output = `# HELP ${this.name} ${this.help}\n`;
+    let output = `# HELP ${this.name} ${escapeHelp(this.help)}\n`;
     output += `# TYPE ${this.name} gauge\n`;
     for (const [key, value] of this.values) {
       const labels = JSON.parse(key);
       const labelStr = Object.entries(labels)
-        .map(([k, v]) => `${k}="${v}"`)
+        .map(([k, v]) => `${k}="${escapeLabelValue(v)}"`)
         .join(",");
       output += labelStr
         ? `${this.name}{${labelStr}} ${value}\n`
@@ -81,7 +121,8 @@ class Histogram {
   }
 
   observe(labels = {}, value) {
-    const key = JSON.stringify(labels);
+    const normalizedLabels = normalizeLabels(labels);
+    const key = JSON.stringify(normalizedLabels);
     this.counts.set(key, (this.counts.get(key) || 0) + 1);
     this.sums.set(key, (this.sums.get(key) || 0) + value);
     if (!this.bucketCounts.has(key)) {
@@ -94,21 +135,23 @@ class Histogram {
   }
 
   expose() {
-    let output = `# HELP ${this.name} ${this.help}\n`;
+    let output = `# HELP ${this.name} ${escapeHelp(this.help)}\n`;
     output += `# TYPE ${this.name} histogram\n`;
     for (const [key, count] of this.counts) {
       const labels = JSON.parse(key);
       const baseLabelStr = Object.entries(labels)
-        .map(([k, v]) => `${k}="${v}"`)
+        .map(([k, v]) => `${k}="${escapeLabelValue(v)}"`)
         .join(",");
       const bc = this.bucketCounts.get(key);
       this.buckets.forEach((bucket, i) => {
         const bucketLabel = baseLabelStr
-          ? `${baseLabelStr},le="${bucket}"`
-          : `le="${bucket}"`;
+          ? `${baseLabelStr},le="${escapeLabelValue(bucket)}"`
+          : `le="${escapeLabelValue(bucket)}"`;
         output += `${this.name}_bucket{${bucketLabel}} ${bc[i]}\n`;
       });
-      const infLabel = baseLabelStr ? `${baseLabelStr},le="+Inf"` : `le="+Inf"`;
+      const infLabel = baseLabelStr
+        ? `${baseLabelStr},le="${escapeLabelValue("+Inf")}"`
+        : `le="${escapeLabelValue("+Inf")}"`;
       output += `${this.name}_bucket{${infLabel}} ${count}\n`;
       output += baseLabelStr
         ? `${this.name}_sum{${baseLabelStr}} ${this.sums.get(key)}\n`
