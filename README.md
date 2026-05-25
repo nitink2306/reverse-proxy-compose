@@ -1,18 +1,20 @@
 # Basic Docker Compose App
 
-A minimal, production-style Docker Compose stack that runs an Express API with PostgreSQL and pgAdmin.
+A minimal, production-style Docker Compose stack that runs an Express API behind an nginx reverse proxy, with PostgreSQL and pgAdmin.
 
 ## What we achieved
 
 - Containerized a Node.js API with a multi-stage Dockerfile and non-root runtime
 - Provisioned PostgreSQL with a healthcheck and persistent volume
 - Added pgAdmin for database inspection and troubleshooting
+- Added nginx as a reverse proxy — the API is not directly exposed to the host
 - Wired everything together with Docker Compose and environment-based configuration
 
 ## Services and ports
 
-- **API**: http://localhost:8080 (container port 3000)
-- **pgAdmin**: http://localhost:5050 (container port 80)
+- **nginx**: http://localhost:80 (proxies to API internally)
+- **API**: internal only on port 3000 (not exposed to host)
+- **pgAdmin**: http://localhost:5050
 - **PostgreSQL**: internal on port 5432
 
 ## Prerequisites
@@ -47,7 +49,7 @@ docker compose up --build
 Example:
 
 ```bash
-curl -X POST http://localhost:8080/messages ^
+curl -X POST http://localhost/messages ^
   -H "Content-Type: application/json" ^
   -d "{\"text\":\"hello\"}"
 ```
