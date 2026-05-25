@@ -1,0 +1,170 @@
+class Counter {
+  constructor(name, help, labelNames = []) {
+    this.name = name;
+    this.help = help;
+    this.labelNames = labelNames;
+    this.values = new Map();
+  }
+
+  inc(labels = {}, value = 1) {
+    const key = JSON.stringify(labels);
+    this.values.set(key, (this.values.get(key) || 0) + value);
+  }
+
+  expose() {
+    let output = `# HELP ${this.name} ${this.help}\n`;
+    output += `# TYPE ${this.name} counter\n`;
+    for (const [key, value] of this.values) {
+      const labels = JSON.parse(key);
+      const labelStr = Object.entries(labels)
+        .map(([k, v]) => `${k}="${v}"`)
+        .join(",");
+      output += labelStr
+        ? `${this.name}{${labelStr}} ${value}\n`
+        : `${this.name} ${value}\n`;
+    }
+    return output;
+  }
+}
+
+class Gauge {
+  constructor(name, help, labelNames = []) {
+    this.name = name;
+    this.help = help;
+    this.labelNames = labelNames;
+    this.values = new Map();
+  }
+
+  set(labels = {}, value) {
+    const key = JSON.stringify(labels);
+    this.values.set(key, value);
+  }
+
+  inc(labels = {}, value = 1) {
+    const key = JSON.stringify(labels);
+    this.values.set(key, (this.values.get(key) || 0) + value);
+  }
+
+  dec(labels = {}, value = 1) {
+    const key = JSON.stringify(labels);
+    this.values.set(key, (this.values.get(key) || 0) - value);
+  }
+
+  expose() {
+    let output = `# HELP ${this.name} ${this.help}\n`;
+    output += `# TYPE ${this.name} gauge\n`;
+    for (const [key, value] of this.values) {
+      const labels = JSON.parse(key);
+      const labelStr = Object.entries(labels)
+        .map(([k, v]) => `${k}="${v}"`)
+        .join(",");
+      output += labelStr
+        ? `${this.name}{${labelStr}} ${value}\n`
+        : `${this.name} ${value}\n`;
+    }
+    return output;
+  }
+}
+
+class Histogram {
+  constructor(
+    name,
+    help,
+    buckets = [0.005, 0.01, 0.025, 0.05, 0.1, 0.25, 0.5, 1, 2.5, 5, 10],
+  ) {
+    this.name = name;
+    this.help = help;
+    this.buckets = buckets;
+    this.counts = new Map();
+    this.sums = new Map();
+    this.bucketCounts = new Map();
+  }
+
+  observe(labels = {}, value) {
+    const key = JSON.stringify(labels);
+    this.counts.set(key, (this.counts.get(key) || 0) + 1);
+    this.sums.set(key, (this.sums.get(key) || 0) + value);
+    if (!this.bucketCounts.has(key)) {
+      this.bucketCounts.set(key, new Array(this.buckets.length).fill(0));
+    }
+    const bc = this.bucketCounts.get(key);
+    this.buckets.forEach((bucket, i) => {
+      if (value <= bucket) bc[i]++;
+    });
+  }
+
+  expose() {
+    let output = `# HELP ${this.name} ${this.help}\n`;
+    output += `# TYPE ${this.name} histogram\n`;
+    for (const [key, count] of this.counts) {
+      const labels = JSON.parse(key);
+      const baseLabelStr = Object.entries(labels)
+        .map(([k, v]) => `${k}="${v}"`)
+        .join(",");
+      const bc = this.bucketCounts.get(key);
+      this.buckets.forEach((bucket, i) => {
+        const bucketLabel = baseLabelStr
+          ? `${baseLabelStr},le="${bucket}"`
+          : `le="${bucket}"`;
+        output += `${this.name}_bucket{${bucketLabel}} ${bc[i]}\n`;
+      });
+      const infLabel = baseLabelStr ? `${baseLabelStr},le="+Inf"` : `le="+Inf"`;
+      output += `${this.name}_bucket{${infLabel}} ${count}\n`;
+      output += baseLabelStr
+        ? `${this.name}_sum{${baseLabelStr}} ${this.sums.get(key)}\n`
+        : `${this.name}_sum ${this.sums.get(key)}\n`;
+      output += baseLabelStr
+        ? `${this.name}_count{${baseLabelStr}} ${count}\n`
+        : `${this.name}_count ${count}\n`;
+    }
+    return output;
+  }
+}
+
+class Registry {
+  constructor() {
+    this.metrics = [];
+  }
+
+  register(metric) {
+    this.metrics.push(metric);
+    return metric;
+  }
+
+  expose() {
+    return this.metrics.map((m) => m.expose()).join("\n");
+  }
+}
+
+const registry = new Registry();
+
+const httpRequestsTotal = registry.register(
+  new Counter("http_requests_total", "Total number of HTTP requests", [
+    "method",
+    "path",
+    "status",
+  ]),
+);
+
+const httpRequestDuration = registry.register(
+  new Histogram(
+    "http_request_duration_seconds",
+    "HTTP request duration in seconds",
+  ),
+);
+
+const activeConnections = registry.register(
+  new Gauge("active_connections", "Number of active connections"),
+);
+
+const memoryUsage = registry.register(
+  new Gauge("process_memory_bytes", "Process memory usage in bytes", ["type"]),
+);
+
+module.exports = {
+  registry,
+  httpRequestsTotal,
+  httpRequestDuration,
+  activeConnections,
+  memoryUsage,
+};
