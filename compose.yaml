@@ -12,7 +12,7 @@ services:
       - app-network
 
   api:
-    build: ./api
+    image: nitink2306/docker-compose-app:latest
     expose:
       - "3000"
     environment:
