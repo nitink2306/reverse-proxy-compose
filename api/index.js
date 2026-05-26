@@ -78,9 +78,13 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/metrics", async (req, res) => {
-  updateProcessMemoryBytes();
-  res.set("Content-Type", register.contentType);
-  res.send(await register.metrics());
+  try {
+    updateProcessMemoryBytes();
+    res.set("Content-Type", register.contentType);
+    res.send(await register.metrics());
+  } catch (error) {
+    res.status(500).type("text/plain").send("Failed to collect metrics");
+  }
 });
 
 app.listen(3000, () => console.log("API running on port 3000"));
