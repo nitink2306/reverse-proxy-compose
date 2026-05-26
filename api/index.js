@@ -8,85 +8,92 @@ const {
   memoryUsage,
 } = require("./metrics");
 
-const app = express();
-app.use(express.json());
+function createApp(pool) {
+  const app = express();
+  app.use(express.json());
 
-app.use((req, res, next) => {
-  const start = process.hrtime.bigint();
-  activeConnections.inc({}, 1);
-  let finished = false;
-  const finalize = (recordMetrics) => {
-    if (finished) return;
-    finished = true;
-    activeConnections.dec({}, 1);
-    if (!recordMetrics) return;
-    const duration = Number(process.hrtime.bigint() - start) / 1e9;
-    const routePath = req.route?.path
-      ? `${req.baseUrl || ""}${req.route.path}`
-      : req.baseUrl || "unknown";
-    httpRequestsTotal.inc({
-      method: req.method,
-      path: routePath,
-      status: res.statusCode.toString(),
-    });
-    httpRequestDuration.observe({}, duration);
-  };
-  res.on("finish", () => finalize(true));
-  res.on("close", () => finalize(false));
-  next();
-});
+  app.use((req, res, next) => {
+    const start = process.hrtime.bigint();
+    activeConnections.inc({}, 1);
+    let finished = false;
+    const finalize = (recordMetrics) => {
+      if (finished) return;
+      finished = true;
+      activeConnections.dec({}, 1);
+      if (!recordMetrics) return;
+      const duration = Number(process.hrtime.bigint() - start) / 1e9;
+      const routePath = req.route?.path
+        ? `${req.baseUrl || ""}${req.route.path}`
+        : req.baseUrl || "unknown";
+      httpRequestsTotal.inc({
+        method: req.method,
+        path: routePath,
+        status: res.statusCode.toString(),
+      });
+      httpRequestDuration.observe({}, duration);
+    };
+    res.on("finish", () => finalize(true));
+    res.on("close", () => finalize(false));
+    next();
+  });
 
-setInterval(() => {
-  const mem = process.memoryUsage();
-  memoryUsage.set({ type: "rss" }, mem.rss);
-  memoryUsage.set({ type: "heapUsed" }, mem.heapUsed);
-  memoryUsage.set({ type: "heapTotal" }, mem.heapTotal);
-}, 10000);
+  setInterval(() => {
+    const mem = process.memoryUsage();
+    memoryUsage.set({ type: "rss" }, mem.rss);
+    memoryUsage.set({ type: "heapUsed" }, mem.heapUsed);
+    memoryUsage.set({ type: "heapTotal" }, mem.heapTotal);
+  }, 10000);
 
-const pool = new Pool({
-  host: process.env.DB_HOST,
-  port: process.env.DB_PORT,
-  database: process.env.DB_NAME,
-  user: process.env.DB_USER,
-  password: process.env.DB_PASSWORD,
-});
+  app.get("/health", (req, res) => {
+    res.json({ status: "ok" });
+  });
 
-// Create table on startup
-pool
-  .query(
-    `
-  CREATE TABLE IF NOT EXISTS messages (
-    id SERIAL PRIMARY KEY,
-    text TEXT NOT NULL,
-    created_at TIMESTAMP DEFAULT NOW()
-  )
-`,
-  )
-  .then(() => console.log("Table ready"));
+  app.get("/messages", async (req, res) => {
+    const result = await pool.query(
+      "SELECT * FROM messages ORDER BY created_at DESC",
+    );
+    res.json(result.rows);
+  });
 
-app.get("/health", (req, res) => {
-  res.json({ status: "ok" });
-});
+  app.post("/messages", async (req, res) => {
+    const { text } = req.body;
+    const result = await pool.query(
+      "INSERT INTO messages (text) VALUES ($1) RETURNING *",
+      [text],
+    );
+    res.status(201).json(result.rows[0]);
+  });
 
-app.get("/messages", async (req, res) => {
-  const result = await pool.query(
-    "SELECT * FROM messages ORDER BY created_at DESC",
-  );
-  res.json(result.rows);
-});
+  app.get("/metrics", (req, res) => {
+    res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
+    res.send(registry.expose());
+  });
 
-app.post("/messages", async (req, res) => {
-  const { text } = req.body;
-  const result = await pool.query(
-    "INSERT INTO messages (text) VALUES ($1) RETURNING *",
-    [text],
-  );
-  res.status(201).json(result.rows[0]);
-});
+  return app;
+}
 
-app.get("/metrics", (req, res) => {
-  res.set("Content-Type", "text/plain; version=0.0.4; charset=utf-8");
-  res.send(registry.expose());
-});
+if (require.main === module) {
+  const pool = new Pool({
+    host: process.env.DB_HOST,
+    port: process.env.DB_PORT,
+    database: process.env.DB_NAME,
+    user: process.env.DB_USER,
+    password: process.env.DB_PASSWORD,
+  });
 
-app.listen(3000, () => console.log("API running on port 3000"));
+  pool
+    .query(
+      `
+    CREATE TABLE IF NOT EXISTS messages (
+      id SERIAL PRIMARY KEY,
+      text TEXT NOT NULL,
+      created_at TIMESTAMP DEFAULT NOW()
+    )
+  `,
+    )
+    .then(() => console.log("Table ready"));
+
+  createApp(pool).listen(3000, () => console.log("API running on port 3000"));
+}
+
+module.exports = { createApp };

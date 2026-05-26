@@ -1,0 +1,23 @@
+# Dependencies
+node_modules/
+
+# Test files
+**/*.test.js
+**/*.spec.js
+coverage/
+.nyc_output/
+
+# Development config
+.env
+.env.*
+!.env.example
+
+# Editor and OS
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# Git
+.git/
+.gitignore
