@@ -5,6 +5,7 @@ const {
   httpRequestsTotal,
   httpRequestDuration,
   activeConnections,
+  updateProcessMemoryBytes,
 } = require("./metrics");
 
 const app = express();
@@ -77,6 +78,7 @@ app.post("/messages", async (req, res) => {
 });
 
 app.get("/metrics", async (req, res) => {
+  updateProcessMemoryBytes();
   res.set("Content-Type", register.contentType);
   res.send(await register.metrics());
 });
