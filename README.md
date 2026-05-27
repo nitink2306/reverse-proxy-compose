@@ -25,6 +25,8 @@ A fully containerized, production-style web application stack: Node.js/Express A
                   └─────────────┘
 
   pgAdmin (:5050) ──────────────▶ PostgreSQL (internal)
+  Prometheus (:9090) ───────────▶ API /metrics (internal)
+  Grafana (:3001) ──────────────▶ Prometheus (internal)
 ```
 
 All inter-service traffic runs on an isolated bridge network. The API is never directly exposed to the host.
@@ -35,6 +37,7 @@ Prometheus scrapes API metrics over the internal network, and Grafana reads from
 ### API (`api/`)
 - Node.js 20 + Express, connecting to PostgreSQL via `pg`
 - Auto-creates the `messages` table on startup
+- Exposes Prometheus metrics for request totals, latency, active connections, and process memory
 - Built with a **multi-stage Dockerfile**: dependencies installed in a `node:20-alpine` builder stage, runtime image based on `alpine:3.22.4` with only Node.js added — no npm, no shell extras
 - Runs as a **non-root user** (`node`) for container security
 - Built-in **Docker healthcheck** via `wget` on `/health`
@@ -57,12 +60,14 @@ Prometheus scrapes API metrics over the internal network, and Grafana reads from
 - Scrapes API metrics from `/metrics` every 15s (internal only)
 - Uses `prometheus/prometheus.yml` for configuration
 - Stores time-series data in the `prometheus-data` volume
+- Retains data for 7 days
 - Accessible at [http://localhost:9090](http://localhost:9090)
 
 ### Grafana
 - Visualization UI for Prometheus metrics
 - Accessible at [http://localhost:3001](http://localhost:3001)
 - Credentials configured via environment variables
+- User sign-up disabled by default (`GF_USERS_ALLOW_SIGN_UP=false`)
 
 ### CI/CD (`.github/workflows/docker-build-push.yml`)
 - Triggers on every push to `main`
@@ -110,6 +115,13 @@ docker compose up --build
 ```
 
 Docker Compose will start services in dependency order: PostgreSQL first, then the API (after the DB healthcheck passes), then nginx (after the API healthcheck passes).
+
+To use the published Docker Hub image instead of building locally:
+
+```bash
+docker compose pull api
+docker compose up -d
+```
 
 To run in the background:
 
