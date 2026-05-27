@@ -26,10 +26,11 @@ describe("GET /health", () => {
 });
 
 describe("GET /messages", () => {
-  test("returns 200 with an array", async () => {
+  test("returns 200 with an array of messages", async () => {
     const res = await request.get("/messages");
     assert.equal(res.status, 200);
     assert.ok(Array.isArray(res.body));
+    assert.ok(res.body.length > 0);
   });
 });
 
@@ -38,14 +39,18 @@ describe("POST /messages", () => {
     const res = await request.post("/messages").send({ text: "test message" });
     assert.equal(res.status, 201);
     assert.equal(res.body.text, "test message");
+    assert.ok(res.body.id);
   });
 });
 
 describe("GET /metrics", () => {
+  let metricsBody;
+
   before(async () => {
-    // generate some traffic so counters are populated
     await request.get("/health");
     await request.get("/messages");
+    const res = await request.get("/metrics");
+    metricsBody = res.text;
   });
 
   test("returns 200 with Prometheus content-type", async () => {
@@ -54,23 +59,24 @@ describe("GET /metrics", () => {
     assert.ok(res.headers["content-type"].includes("text/plain"));
   });
 
-  test("contains http_requests_total", async () => {
-    const res = await request.get("/metrics");
-    assert.ok(res.text.includes("http_requests_total"));
+  test("exposes http_requests_total counter", () => {
+    assert.ok(metricsBody.includes("# TYPE http_requests_total counter"));
   });
 
-  test("contains http_request_duration_seconds", async () => {
-    const res = await request.get("/metrics");
-    assert.ok(res.text.includes("http_request_duration_seconds"));
+  test("records traffic with correct labels", () => {
+    assert.ok(metricsBody.includes('method="GET"'));
+    assert.ok(metricsBody.includes('status="200"'));
   });
 
-  test("contains active_connections", async () => {
-    const res = await request.get("/metrics");
-    assert.ok(res.text.includes("active_connections"));
+  test("exposes http_request_duration_seconds histogram", () => {
+    assert.ok(metricsBody.includes("# TYPE http_request_duration_seconds histogram"));
   });
 
-  test("contains process_memory_bytes", async () => {
-    const res = await request.get("/metrics");
-    assert.ok(res.text.includes("process_memory_bytes"));
+  test("exposes active_connections gauge", () => {
+    assert.ok(metricsBody.includes("# TYPE active_connections gauge"));
+  });
+
+  test("exposes process_memory_bytes gauge", () => {
+    assert.ok(metricsBody.includes("# TYPE process_memory_bytes gauge"));
   });
 });
