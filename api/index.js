@@ -254,35 +254,36 @@ function createApp(pool) {
 // This is the Node.js equivalent of Python's `if __name__ == "__main__":`.
 // =============================================================================
 if (require.main === module) {
-  // Create the real connection pool using environment variables injected
-  // by Docker Compose (defined in compose.yaml under the api service).
-  const pool = new Pool({
-    host: process.env.DB_HOST,
-    port: process.env.DB_PORT,
-    database: process.env.DB_NAME,
-    user: process.env.DB_USER,
-    password: process.env.DB_PASSWORD,
+  (async () => {
+    // Create the real connection pool using environment variables injected
+    // by Docker Compose (defined in compose.yaml under the api service).
+    const pool = new Pool({
+      host: process.env.DB_HOST,
+      port: process.env.DB_PORT,
+      database: process.env.DB_NAME,
+      user: process.env.DB_USER,
+      password: process.env.DB_PASSWORD,
+    });
+
+    // Ensure the messages table exists before accepting traffic.
+    // IF NOT EXISTS makes this a safe no-op if the table already exists —
+    // no migrations framework needed for a simple schema like this.
+    await pool.query(`
+      CREATE TABLE IF NOT EXISTS messages (
+        id         SERIAL    PRIMARY KEY,
+        text       TEXT      NOT NULL,
+        created_at TIMESTAMP DEFAULT NOW()
+      )
+    `);
+    console.log("Table ready");
+
+    // Start the HTTP server. Port 3000 matches the Docker EXPOSE and the
+    // Prometheus scrape target configured in prometheus/prometheus.yml.
+    createApp(pool).listen(3000, () => console.log("API running on port 3000"));
+  })().catch((err) => {
+    console.error("Failed to start server:", err);
+    process.exit(1);
   });
-
-  // Ensure the messages table exists before accepting traffic.
-  // IF NOT EXISTS makes this a safe no-op if the table already exists —
-  // no migrations framework needed for a simple schema like this.
-  // The .then() fires asynchronously; the server starts listening in parallel.
-  pool
-    .query(
-      `
-    CREATE TABLE IF NOT EXISTS messages (
-      id         SERIAL    PRIMARY KEY,
-      text       TEXT      NOT NULL,
-      created_at TIMESTAMP DEFAULT NOW()
-    )
-  `,
-    )
-    .then(() => console.log("Table ready"));
-
-  // Start the HTTP server. Port 3000 matches the Docker EXPOSE and the
-  // Prometheus scrape target configured in prometheus/prometheus.yml.
-  createApp(pool).listen(3000, () => console.log("API running on port 3000"));
 }
 
 // Export only createApp — the pool and server are intentionally not exported.

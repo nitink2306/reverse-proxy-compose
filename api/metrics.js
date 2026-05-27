@@ -53,8 +53,8 @@ const processMemoryBytes = new client.Gauge({
 // Reads current memory snapshot from Node.js and pushes each dimension
 // into the gauge. Called externally on a timer (every 10s in index.js).
 //
-// The arrayBuffers guard handles Node.js < 13 where that field didn't exist —
-// avoids setting the gauge to `undefined` on older runtimes.
+// The arrayBuffers field is not guaranteed to exist on all runtimes —
+// the guard avoids setting the gauge to `undefined` if the field is absent.
 const updateProcessMemoryBytes = () => {
   // process.memoryUsage() returns a synchronous snapshot — no I/O involved
   const memoryUsage = process.memoryUsage();
@@ -64,7 +64,7 @@ const updateProcessMemoryBytes = () => {
   processMemoryBytes.set({ type: "heapUsed" }, memoryUsage.heapUsed);
   processMemoryBytes.set({ type: "external" }, memoryUsage.external);
 
-  // arrayBuffers was added in Node.js 13 — guard prevents NaN in older versions
+  // arrayBuffers may not be present on all runtimes — guard prevents setting the gauge to NaN or undefined
   if (typeof memoryUsage.arrayBuffers === "number") {
     processMemoryBytes.set({ type: "arrayBuffers" }, memoryUsage.arrayBuffers);
   }
