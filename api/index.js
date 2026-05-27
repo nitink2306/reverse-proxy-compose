@@ -37,12 +37,13 @@ function createApp(pool) {
     next();
   });
 
-  setInterval(() => {
+  const memoryMetricsInterval = setInterval(() => {
     const mem = process.memoryUsage();
     memoryUsage.set({ type: "rss" }, mem.rss);
     memoryUsage.set({ type: "heapUsed" }, mem.heapUsed);
     memoryUsage.set({ type: "heapTotal" }, mem.heapTotal);
   }, 10000);
+  memoryMetricsInterval.unref();
 
   app.get("/health", (req, res) => {
     res.json({ status: "ok" });
