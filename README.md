@@ -31,6 +31,8 @@ A fully containerized, production-style web application stack: Node.js/Express A
 
 All inter-service traffic runs on an isolated bridge network. The API is never directly exposed to the host.
 Prometheus scrapes API metrics over the internal network, and Grafana reads from Prometheus.
+The `/metrics` endpoint is blocked at the nginx layer with `deny all`, so it is only reachable from inside the Docker network.
+Service startup order is enforced by healthchecks: PostgreSQL must pass `pg_isready`, then the API must pass `/health`, and only then nginx starts.
 
 ## What's inside
 
@@ -90,13 +92,12 @@ Prometheus scrapes API metrics over the internal network, and Grafana reads from
 
 - Docker Desktop (or Docker Engine + Compose v2)
 
-## Setup
+## Environment variables
 
-1. Copy the example env file:
-   - Windows: `copy .env.example .env`
-   - macOS/Linux: `cp .env.example .env`
+Copy the example env file and fill in the values:
 
-2. Fill in the values:
+- Windows: `copy .env.example .env`
+- macOS/Linux: `cp .env.example .env`
 
 ```env
 POSTGRES_DB=
@@ -106,6 +107,31 @@ PGADMIN_EMAIL=
 PGADMIN_PASSWORD=
 GF_SECURITY_ADMIN_USER=
 GF_SECURITY_ADMIN_PASSWORD=
+```
+
+## Commands
+
+**Run the full stack:**
+
+```bash
+docker compose up --build          # foreground
+docker compose up -d --build       # background
+docker compose down                # stop (data volumes preserved)
+docker compose down -v             # stop and delete volumes
+```
+
+**API tests** (no Docker required — uses a mock pool):
+
+```bash
+cd api && node --test
+```
+
+**Exercise the API** (stack must be running):
+
+```bash
+curl http://localhost/health
+curl http://localhost/messages
+curl -X POST http://localhost/messages -H "Content-Type: application/json" -d '{"text":"hello"}'
 ```
 
 ## Run
@@ -134,6 +160,26 @@ To stop and remove containers (data volume is preserved):
 ```bash
 docker compose down
 ```
+
+## API Implementation
+
+- `createApp(pool)` in `api/index.js` builds and returns the Express app, using dependency injection so tests can pass a mock pool without a real PostgreSQL instance.
+- The boot block (`require.main === module`) creates the real `pg.Pool` from environment variables and starts the HTTP server on port 3000; this block is skipped when required by tests.
+- `api/metrics.js` is the single source of truth for Prometheus metric definitions, and `index.js` only imports and records them.
+- The memory metrics interval inside `createApp` uses `.unref()` so the timer does not keep Node running after tests complete.
+- Express 5 async route handlers propagate rejected promises to the error handler automatically, so route-level `try/catch` is generally unnecessary.
+
+## Testing
+
+Tests live in `api/index.test.js` and run with Node's built-in test runner (`node --test`) plus `supertest` and an inline `mockPool`.
+The mock pool handles SELECT and INSERT SQL patterns using string matching, so no real database or running server is required.
+
+## Docker image
+
+- Multi-stage build: `node:20-alpine` builder installs production dependencies, then `alpine:3.22.4` runtime adds only `nodejs`.
+- Runtime image intentionally excludes npm and shell extras to keep the image small and reduce attack surface.
+- The final image copies only `index.js`, `metrics.js`, and `node_modules`.
+- The application runs as the non-root `node` user.
 
 ## API endpoints
 
