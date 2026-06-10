@@ -22,6 +22,7 @@ jobs:
     permissions:
       contents: write
       pull-requests: write
+      id-token: write
 
     steps:
       - name: Checkout PR branch
@@ -52,6 +53,5 @@ jobs:
             5. If updates are needed: commit with message "docs: auto-update README for PR #${{ github.event.pull_request.number }} [skip ci]"
             6. If no updates are needed: do nothing and exit cleanly.
           claude_args: "--allowedTools Read,Edit,Bash --max-turns 10"
-          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
