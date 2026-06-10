@@ -1,0 +1,57 @@
+name: Auto-update README
+
+on:
+  pull_request:
+    types: [opened, synchronize]
+    branches:
+      - main
+    paths:
+      - 'api/**'
+      - 'nginx/**'
+      - 'prometheus/**'
+      - 'compose.yaml'
+      - '.env.example'
+      - '.github/workflows/**'
+
+jobs:
+  update-readme:
+    runs-on: ubuntu-24.04
+    # Fork PRs have no write access to the external branch — skip them
+    if: github.event.pull_request.head.repo.full_name == github.repository
+
+    permissions:
+      contents: write
+      pull-requests: write
+
+    steps:
+      - name: Checkout PR branch
+        uses: actions/checkout@v6.0.3
+        with:
+          ref: ${{ github.head_ref }}
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Update README with Claude
+        uses: anthropics/claude-code-action@v1.0.142
+        with:
+          prompt: |
+            You are maintaining README.md for a production Docker Compose application stack.
+
+            PR #${{ github.event.pull_request.number }}: "${{ github.event.pull_request.title }}"
+
+            Steps:
+            1. Run: gh pr diff ${{ github.event.pull_request.number }}
+            2. Read README.md
+            3. Determine whether the diff introduces user-facing changes worth documenting:
+               - New or changed API endpoints, ports, or services
+               - New or changed environment variables (.env.example changes)
+               - New prerequisites or setup steps
+               - Changed architecture (new or removed compose.yaml services)
+               - New CI/CD behaviour (workflow changes users should know about)
+               Internal refactors, bug fixes, test additions, and comment-only changes do NOT warrant README updates.
+            4. If updates are needed: make surgical, minimal edits. Do not reformat or rewrite sections unaffected by the PR.
+            5. If updates are needed: commit with message "docs: auto-update README for PR #${{ github.event.pull_request.number }} [skip ci]"
+            6. If no updates are needed: do nothing and exit cleanly.
+          claude_args: "--allowedTools Read,Edit,Bash --max-turns 10"
+          anthropic_api_key: ${{ secrets.ANTHROPIC_API_KEY }}
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
