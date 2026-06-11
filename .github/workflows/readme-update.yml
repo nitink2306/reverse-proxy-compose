@@ -34,6 +34,7 @@ jobs:
       - name: Update README with Claude
         uses: anthropics/claude-code-action@v1.0.142
         with:
+          claude_code_oauth_token: ${{ secrets.CLAUDE_CODE_OAUTH_TOKEN }}
           prompt: |
             You are maintaining README.md for a production Docker Compose application stack.
 
