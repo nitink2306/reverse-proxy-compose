@@ -1,41 +1,30 @@
-name: Build and Push Docker Image
+name: CD
 
 on:
-  push:
-    branches:
-      - main
-  pull_request:
+  workflow_run:
+    workflows: ["CI"]
+    types: [completed]
     branches:
       - main
 
 jobs:
   build-and-push:
     runs-on: ubuntu-24.04
+    # Only run if CI passed — never deploy a broken commit
+    if: ${{ github.event.workflow_run.conclusion == 'success' }}
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v6.0.3
-
-      - name: Set up Node.js
-        uses: actions/setup-node@v6.4.0
         with:
-          node-version: '20'
-          cache: 'npm'
-          cache-dependency-path: api/package-lock.json
-
-      - name: Install dependencies
-        run: npm ci
-        working-directory: api
-
-      - name: Run tests
-        run: node --test
-        working-directory: api
+          # workflow_run fires on the default branch; check out the commit
+          # that triggered CI so we build and tag the correct source tree
+          ref: ${{ github.event.workflow_run.head_sha }}
 
       - name: Set up QEMU
         uses: docker/setup-qemu-action@v4.1.0
 
       - name: Log in to Docker Hub
-        if: github.event_name == 'push'
         uses: docker/login-action@v4.2.0
         with:
           username: ${{ secrets.DOCKER_USERNAME }}
@@ -49,9 +38,9 @@ jobs:
         with:
           context: ./api
           platforms: linux/amd64,linux/arm64
-          push: ${{ github.event_name == 'push' }}
+          push: true
           tags: |
             nitink2306/docker-compose-app:latest
-            nitink2306/docker-compose-app:${{ github.sha }}
+            nitink2306/docker-compose-app:${{ github.event.workflow_run.head_sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
