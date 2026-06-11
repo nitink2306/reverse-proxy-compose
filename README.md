@@ -1,6 +1,6 @@
 # Production-Grade Docker Compose Stack
 
-A fully containerized, production-style web application stack: Node.js/Express API behind an nginx reverse proxy, backed by PostgreSQL — with pgAdmin for database management and a GitHub Actions CI/CD pipeline that builds and publishes images to Docker Hub on every push.
+A fully containerized, production-style web application stack: Node.js/Express API behind an nginx reverse proxy, backed by PostgreSQL — with pgAdmin for database management and a two-stage GitHub Actions CI/CD pipeline: a CI workflow runs ESLint and the full test suite on every push and PR; a separate CD workflow builds and publishes multi-platform Docker images to Docker Hub only after CI passes.
 
 ## Architecture
 
@@ -69,11 +69,15 @@ Prometheus scrapes API metrics over the internal network, and Grafana reads from
 - Credentials configured via environment variables
 - User sign-up disabled by default (`GF_USERS_ALLOW_SIGN_UP=false`)
 
-### CI/CD (`.github/workflows/docker-build-push.yml`)
-- Triggers on every push to `main`
-- Logs into Docker Hub using repository secrets
-- Builds with **Docker Buildx** and **GitHub Actions cache** (`type=gha`) for fast incremental builds
-- Pushes two tags: `latest` and the full commit SHA (`nitink2306/docker-compose-app:<sha>`)
+### CI (`.github/workflows/ci.yml`)
+- Triggers on every push to any branch and every PR targeting `main`
+- Runs **ESLint** (static analysis) then the **full test suite with coverage** (`node --experimental-test-coverage --test`)
+- A lint error or failing test blocks all further pipeline stages — nothing ships broken code
+
+### CD (`.github/workflows/docker-build-push.yml`)
+- Triggers only after CI passes on `main` (via `workflow_run`) — never runs on a broken commit
+- Builds **multi-platform images** (`linux/amd64`, `linux/arm64`) with Docker Buildx and GitHub Actions cache (`type=gha`)
+- Pushes two tags to Docker Hub: `latest` and the full commit SHA (`nitink2306/docker-compose-app:<sha>`)
 
 ## Services and ports
 
@@ -182,16 +186,18 @@ curl -X POST http://localhost/messages ^
 | Username | your `POSTGRES_USER` value |
 | Password | your `POSTGRES_PASSWORD` value |
 
-## CI/CD setup (Docker Hub)
+## CI/CD setup
 
-The GitHub Actions workflow requires two repository secrets:
+The CD workflow requires two repository secrets to push images to Docker Hub:
 
-| Secret           | Value                          |
-|------------------|--------------------------------|
-| `DOCKER_USERNAME` | Your Docker Hub username      |
-| `DOCKER_TOKEN`   | A Docker Hub access token (not your password) |
+| Secret            | Value                                          |
+|-------------------|------------------------------------------------|
+| `DOCKER_USERNAME` | Your Docker Hub username                       |
+| `DOCKER_TOKEN`    | A Docker Hub access token (not your password)  |
 
-Set these under **Settings → Secrets and variables → Actions** in your GitHub repository.
+The CI workflow runs automatically with no additional secrets — it uses the built-in `GITHUB_TOKEN`.
+
+Set secrets under **Settings → Secrets and variables → Actions** in your GitHub repository.
 
 ## Data persistence
 
