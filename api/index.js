@@ -240,7 +240,8 @@ function createApp(pool) {
       // may perform async work to gather their data before serializing.
       res.set("Content-Type", register.contentType);
       res.send(await register.metrics());
-    } catch (error) {
+    } catch (err) {
+      console.error("metrics collection failed:", err);
       // Use text/plain so Prometheus doesn't try to parse an HTML error page
       res.status(500).type("text/plain").send("Failed to collect metrics");
     }
