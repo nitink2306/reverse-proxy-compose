@@ -15,7 +15,14 @@ const mockPool = {
   },
 };
 
+const failPool = {
+  query: async () => {
+    throw new Error("DB unavailable");
+  },
+};
+
 const request = supertest(createApp(mockPool));
+const failRequest = supertest(createApp(failPool));
 
 describe("GET /health", () => {
   test("returns 200 with status ok", async () => {
@@ -78,5 +85,39 @@ describe("GET /metrics", () => {
 
   test("exposes process_memory_bytes gauge", () => {
     assert.ok(metricsBody.includes("# TYPE process_memory_bytes gauge"));
+  });
+});
+
+describe("POST /messages - input validation", () => {
+  test("returns 400 when body is empty", async () => {
+    const res = await request.post("/messages").send({});
+    assert.equal(res.status, 400);
+    assert.ok(res.body.error);
+  });
+
+  test("returns 400 when text is an empty string", async () => {
+    const res = await request.post("/messages").send({ text: "" });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.error);
+  });
+
+  test("returns 400 when text is not a string", async () => {
+    const res = await request.post("/messages").send({ text: 42 });
+    assert.equal(res.status, 400);
+    assert.ok(res.body.error);
+  });
+});
+
+describe("error handling", () => {
+  test("GET /messages returns 500 JSON on DB failure", async () => {
+    const res = await failRequest.get("/messages");
+    assert.equal(res.status, 500);
+    assert.ok(res.body.error);
+  });
+
+  test("POST /messages returns 500 JSON on DB failure", async () => {
+    const res = await failRequest.post("/messages").send({ text: "hello" });
+    assert.equal(res.status, 500);
+    assert.ok(res.body.error);
   });
 });

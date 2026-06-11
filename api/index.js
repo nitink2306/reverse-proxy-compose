@@ -208,6 +208,9 @@ function createApp(pool) {
   // ---------------------------------------------------------------------------
   app.post("/messages", async (req, res) => {
     const { text } = req.body;
+    if (typeof text !== "string" || text.length === 0) {
+      return res.status(400).json({ error: "text is required" });
+    }
     const result = await pool.query(
       "INSERT INTO messages (text) VALUES ($1) RETURNING *",
       [text], // parameterized — safe from SQL injection
@@ -241,6 +244,20 @@ function createApp(pool) {
       // Use text/plain so Prometheus doesn't try to parse an HTML error page
       res.status(500).type("text/plain").send("Failed to collect metrics");
     }
+  });
+
+  // ---------------------------------------------------------------------------
+  // ERROR HANDLER
+  //
+  // Express 5 auto-catches rejected promises from async routes and forwards
+  // them here. Returning JSON (not HTML) keeps the API contract consistent —
+  // callers always receive a JSON body regardless of whether the request
+  // succeeded or failed.
+  // ---------------------------------------------------------------------------
+  // eslint-disable-next-line no-unused-vars
+  app.use((err, req, res, next) => {
+    const status = err.status || err.statusCode || 500;
+    res.status(status).json({ error: err.message || "Internal Server Error" });
   });
 
   return app;
