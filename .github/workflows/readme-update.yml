@@ -48,8 +48,17 @@ jobs:
                - New or changed environment variables (.env.example changes)
                - New prerequisites or setup steps
                - Changed architecture (new or removed compose.yaml services)
-               - New CI/CD behaviour (workflow changes users should know about)
-               Internal refactors, bug fixes, test additions, and comment-only changes do NOT warrant README updates.
+               - CI/CD changes that users or contributors need to know about:
+                   * A new workflow file added (e.g. a CI pipeline that wasn't there before)
+                   * How or when CD deploys changed (e.g. now requires CI to pass first)
+                   * New quality gates added to PRs (lint, tests, coverage checks)
+                   * New secrets or one-time setup steps required to use the repo
+               NOT worth documenting: action version bumps, renaming jobs,
+               workflow refactors whose observable behaviour is unchanged, adding tests.
+
+               For any diff touching .github/workflows/: read the affected workflow files,
+               then read the README CI/CD section and check whether it still accurately
+               describes what the pipelines do. If it doesn't match, update it.
             4. If updates are needed: make surgical, minimal edits. Do not reformat or rewrite sections unaffected by the PR.
             5. If updates are needed: commit with message "docs: auto-update README for PR #${{ github.event.pull_request.number }} [skip ci]"
             6. If no updates are needed: do nothing and exit cleanly.
